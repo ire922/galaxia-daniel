@@ -1,0 +1,546 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#050414">
+<title>Un universo para Daniel</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #03030d;
+    color: #fff;
+    font-family: Georgia, 'Times New Roman', serif;
+}
+
+#space {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    touch-action: none;
+    cursor: grab;
+}
+
+#space:active {
+    cursor: grabbing;
+}
+
+.hud {
+    position: fixed;
+    z-index: 2;
+    left: 0;
+    right: 0;
+    top: 0;
+    padding: 20px 18px 14px;
+    text-align: center;
+    pointer-events: none;
+    background: linear-gradient(#050414b8, transparent);
+}
+
+.hud .eyebrow {
+    font: 10px/1.4 Arial, sans-serif;
+    letter-spacing: .34em;
+    color: #c5b8ff;
+    text-transform: uppercase;
+}
+
+.hud h1 {
+    margin: 5px 0 3px;
+    font-size: clamp(27px, 5vw, 46px);
+    font-weight: 400;
+    letter-spacing: .16em;
+    text-shadow: 0 0 18px #b78bff, 0 0 45px #647dff;
+}
+
+.hud p {
+    margin: 0;
+    font: 12px Arial, sans-serif;
+    color: #c8c4dc;
+    letter-spacing: .06em;
+}
+
+.controls {
+    position: fixed;
+    z-index: 3;
+    left: 50%;
+    bottom: calc(18px + env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    display: flex;
+    gap: 9px;
+    width: max-content;
+    max-width: 94vw;
+}
+
+button {
+    border: 1px solid #bca6ff66;
+    border-radius: 30px;
+    background: #17132bbd;
+    color: #f4edff;
+    padding: 11px 15px;
+    font: 12px Arial, sans-serif;
+    letter-spacing: .04em;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 0 22px #7c54ff22;
+}
+
+button:active {
+    background: #493477;
+}
+
+.hint {
+    position: fixed;
+    z-index: 2;
+    bottom: 78px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    color: #aaa5c5;
+    font: 10px Arial, sans-serif;
+    letter-spacing: .08em;
+    pointer-events: none;
+}
+
+#quote {
+    position: fixed;
+    z-index: 4;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: min(82vw, 390px);
+    padding: 22px 24px;
+    text-align: center;
+    border: 1px solid #c7a8ff66;
+    border-radius: 18px;
+    background: #100d27ef;
+    box-shadow: 0 0 55px #8255ff55;
+    display: none;
+}
+
+#quote.show {
+    display: block;
+    animation: pop .25s ease-out;
+}
+
+#quote p {
+    margin: 0 0 17px;
+    font-size: clamp(18px, 4vw, 25px);
+    line-height: 1.4;
+    color: #fff2ff;
+}
+
+#quote button {
+    padding: 8px 18px;
+}
+
+@keyframes pop {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -47%) scale(.94);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+}
+</style>
+</head>
+
+<body>
+
+<canvas id="space" aria-label="Galaxia interactiva. Arrastra para explorar y toca las frases."></canvas>
+
+<header class="hud">
+    <div class="eyebrow">un pequeño universo para</div>
+    <h1>DANIEL</h1>
+    <p>Hay millones de estrellas, pero este universo tiene tu nombre.</p>
+</header>
+
+<div class="hint">
+    ARRASTRA PARA EXPLORAR · TOCA UNA FRASE PARA LEERLA
+</div>
+
+<div class="controls">
+    <button id="home">⌖ CENTRAR</button>
+    <button id="more">✦ OTRA FRASE</button>
+    <button id="auto">Ⅱ PAUSAR</button>
+</div>
+
+<div id="quote">
+    <p></p>
+    <button id="close">Cerrar ✦</button>
+</div>
+
+<script>
+(() => {
+
+const canvas = document.getElementById('space');
+const ctx = canvas.getContext('2d');
+const quoteBox = document.getElementById('quote');
+const quoteText = quoteBox.querySelector('p');
+
+const phrases = [
+    'Que nunca te falten motivos para sonreír.',
+    'Eres una estrella incluso en tus noches más oscuras.',
+    'Que tus sueños sean más grandes que tus miedos.',
+    'Tu luz hace que este universo sea más bonito.',
+    'Nunca olvides lo especial que eres para quienes te quieren.',
+    'Si pudiera pedirle algo al universo, sería verte siempre feliz.',
+    'Hay algo mágico en tu forma de iluminar los días.',
+    'Tu sonrisa podría competir con todas las estrellas del cielo.',
+    'Qué bonito que existas y que el universo nos permita coincidir.',
+    'Ojalá la vida te abrace tan bonito como mereces.',
+    'Entre tantas estrellas, siempre habrá una que brille pensando en ti.',
+    'Que nunca dudes de lo mucho que vales y de lo querido que eres.'
+];
+
+let w, h, dpr;
+let stars = [];
+let camera = {x: 0, y: 0, zoom: 1};
+let drag = null;
+let angle = 0;
+let paused = false;
+
+const rand = (a, b) => a + Math.random() * (b - a);
+
+function resize() {
+    dpr = Math.min(devicePixelRatio || 1, 2);
+    w = innerWidth;
+    h = innerHeight;
+
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    stars = Array.from(
+        {length: Math.floor(w * h / 900)},
+        () => ({
+            x: rand(-w * 1.6, w * 1.6),
+            y: rand(-h * 1.6, h * 1.6),
+            r: rand(.35, 1.5),
+            a: rand(.25, .9),
+            p: rand(0, 6.28)
+        })
+    );
+}
+
+function screenToWorld(x, y) {
+    return {
+        x: (x - w / 2) / camera.zoom + camera.x,
+        y: (y - h / 2) / camera.zoom + camera.y
+    };
+}
+
+function draw(t) {
+    ctx.clearRect(0, 0, w, h);
+
+    ctx.fillStyle = '#03030d';
+    ctx.fillRect(0, 0, w, h);
+
+    // Estrellas del fondo
+    for (const s of stars) {
+        let tw = .65 + .35 * Math.sin(t * .001 + s.p);
+
+        ctx.beginPath();
+        ctx.arc(
+            (s.x - camera.x * .12) * camera.zoom + w / 2,
+            (s.y - camera.y * .12) * camera.zoom + h / 2,
+            s.r,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fillStyle = `rgba(220,222,255,${s.a * tw})`;
+        ctx.fill();
+    }
+
+    ctx.save();
+
+    ctx.translate(
+        w / 2 - camera.x * camera.zoom,
+        h / 2 - camera.y * camera.zoom
+    );
+
+    ctx.scale(camera.zoom, camera.zoom);
+
+    // Resplandor de la galaxia
+    let g = ctx.createRadialGradient(
+        0, 0, 10,
+        0, 0, Math.max(w, h) * .72
+    );
+
+    g.addColorStop(0, '#a65aff26');
+    g.addColorStop(.32, '#5437a522');
+    g.addColorStop(.7, '#182d7020');
+    g.addColorStop(1, 'transparent');
+
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, Math.max(w, h) * .72, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Brazos espirales
+    ctx.save();
+    ctx.rotate(angle);
+
+    for (let arm = 0; arm < 4; arm++) {
+        for (let i = 0; i < 450; i++) {
+
+            let u = i / 450;
+            let a = u * Math.PI * 4 + arm * Math.PI / 2;
+            let r = 18 + u * Math.max(w, h) * .47;
+
+            let x = Math.cos(a) * r;
+            let y = Math.sin(a) * r * .52;
+            let spread = rand(0, 1);
+
+            ctx.beginPath();
+            ctx.arc(
+                x + rand(-13, 13),
+                y + rand(-8, 8),
+                rand(.5, 2.1),
+                0,
+                Math.PI * 2
+            );
+
+            ctx.fillStyle = `hsla(${260 + arm * 13 + rand(-15, 15)},90%,${65 + spread * 20}%,${.18 + spread * .38})`;
+            ctx.fill();
+        }
+    }
+
+    ctx.restore();
+
+    // Anillos luminosos
+    for (let i = 0; i < 5; i++) {
+        ctx.beginPath();
+        ctx.ellipse(
+            0, 0,
+            100 + i * 85,
+            55 + i * 47,
+            -.15,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.strokeStyle = `rgba(163,130,255,${.11 - i * .014})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+    }
+
+    // Centro brillante
+    let core = ctx.createRadialGradient(0, 0, 2, 0, 0, 100);
+
+    core.addColorStop(0, '#fff');
+    core.addColorStop(.07, '#ffe6ff');
+    core.addColorStop(.22, '#e7a6ffbb');
+    core.addColorStop(.55, '#9b5dff44');
+    core.addColorStop(1, 'transparent');
+
+    ctx.fillStyle = core;
+    ctx.beginPath();
+    ctx.arc(0, 0, 100, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.shadowBlur = 25;
+    ctx.shadowColor = '#dca2ff';
+    ctx.fillStyle = '#fff';
+
+    ctx.beginPath();
+    ctx.arc(0, 0, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+
+    // Frases alrededor de Daniel
+    phrases.forEach((p, i) => {
+
+        let a = i * 2.399 + angle * .22;
+        let r = 155 + (i % 4) * Math.max(w, h) * .105;
+        let pulse = .88 + .12 * Math.sin(t * .0015 + i);
+
+        ctx.save();
+
+        ctx.translate(
+            Math.cos(a) * r,
+            Math.sin(a) * r * .58
+        );
+
+        ctx.scale(pulse, pulse);
+
+        ctx.fillStyle = '#f2eaff';
+        ctx.font = `${Math.max(11, Math.min(15, 12 / camera.zoom))}px Georgia`;
+        ctx.textAlign = 'center';
+        ctx.shadowColor = '#b78aff';
+        ctx.shadowBlur = 12;
+
+        ctx.fillText(
+            p.length > 44 ? p.slice(0, 42) + '…' : p,
+            0,
+            0
+        );
+
+        ctx.shadowBlur = 0;
+        ctx.beginPath();
+        ctx.arc(0, 13, 2.5, 0, Math.PI * 2);
+        ctx.fillStyle = '#d6aaff';
+        ctx.fill();
+
+        ctx.restore();
+    });
+
+    // Nombre central
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `bold ${Math.max(24, Math.min(52, 42 / camera.zoom))}px Georgia`;
+    ctx.shadowColor = '#a66cff';
+    ctx.shadowBlur = 28;
+    ctx.fillStyle = '#fff';
+    ctx.fillText('DANIEL', 0, 0);
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
+
+    requestAnimationFrame(draw);
+}
+
+function showPhrase(i) {
+    quoteText.textContent = phrases[(i + phrases.length) % phrases.length];
+    quoteBox.classList.add('show');
+}
+
+function pointerDown(e) {
+    drag = {
+        x: e.clientX,
+        y: e.clientY,
+        cx: camera.x,
+        cy: camera.y,
+        moved: false
+    };
+
+    canvas.setPointerCapture(e.pointerId);
+}
+
+function pointerMove(e) {
+    if (!drag) return;
+
+    let dx = e.clientX - drag.x;
+    let dy = e.clientY - drag.y;
+
+    if (Math.abs(dx) + Math.abs(dy) > 5) {
+        drag.moved = true;
+    }
+
+    camera.x = drag.cx - dx / camera.zoom;
+    camera.y = drag.cy - dy / camera.zoom;
+}
+
+function pointerUp(e) {
+    if (!drag) return;
+
+    let moved = drag.moved;
+    drag = null;
+
+    if (!moved) {
+        let p = screenToWorld(e.clientX, e.clientY);
+        let best = 0;
+        let bd = Infinity;
+
+        phrases.forEach((s, i) => {
+            let a = i * 2.399 + angle * .22;
+            let r = 155 + (i % 4) * Math.max(w, h) * .105;
+
+            let d = Math.hypot(
+                p.x - Math.cos(a) * r,
+                p.y - Math.sin(a) * r * .58
+            );
+
+            if (d < bd) {
+                bd = d;
+                best = i;
+            }
+        });
+
+        if (Math.hypot(p.x, p.y) < 100) {
+            showPhrase(0);
+        } else if (bd < Math.max(65, 95 / camera.zoom)) {
+            showPhrase(best);
+        }
+    }
+}
+
+// Controles táctiles y ratón
+canvas.addEventListener('pointerdown', pointerDown);
+canvas.addEventListener('pointermove', pointerMove);
+canvas.addEventListener('pointerup', pointerUp);
+canvas.addEventListener('pointercancel', () => drag = null);
+
+// Zoom
+canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+
+    camera.zoom = Math.max(
+        .55,
+        Math.min(
+            2.2,
+            camera.zoom * (e.deltaY < 0 ? 1.08 : .92)
+        )
+    );
+}, {passive: false});
+
+// Botón centrar
+document.getElementById('home').onclick = () => {
+    camera = {x: 0, y: 0, zoom: 1};
+    quoteBox.classList.remove('show');
+};
+
+// Botón otra frase
+let next = 0;
+
+document.getElementById('more').onclick = () => {
+    showPhrase(next++ % phrases.length);
+};
+
+// Pausar y reanudar
+document.getElementById('auto').onclick = e => {
+    paused = !paused;
+
+    e.currentTarget.textContent =
+        paused ? '▶ REANUDAR' : 'Ⅱ PAUSAR';
+};
+
+// Cerrar frase
+document.getElementById('close').onclick = () => {
+    quoteBox.classList.remove('show');
+};
+
+// Animación
+function tick() {
+    if (!paused) {
+        angle += .0008;
+    }
+
+    requestAnimationFrame(tick);
+}
+
+addEventListener('resize', resize);
+
+resize();
+requestAnimationFrame(draw);
+requestAnimationFrame(tick);
+
+})();
+</script>
+
+</body>
+</html>
